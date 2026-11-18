@@ -82,7 +82,7 @@
 
   /* ---------- tree ---------- */
   .stage { position:relative; z-index:1; flex:1; min-height:0; display:flex; padding:0; align-items:stretch; }
-  #gl { width:100%; height:100%; display:block; touch-action:none; cursor:grab; outline:0; opacity:0; transition:opacity .9s ease; }
+  #gl { position:fixed; left:0; top:0; width:100%; height:100%; display:block; touch-action:none; cursor:grab; outline:0; opacity:0; transition:opacity .9s ease; }
   #gl.ready { opacity:1; }
   #gl:active { cursor:grabbing; }
   .loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--script); font-size:24px; opacity:.85; pointer-events:none; color:#ffeaa8; }
@@ -118,11 +118,15 @@
   .ball::after { content:""; position:absolute; left:13%; top:8%; width:32%; height:18%; border-radius:50%;
     background:radial-gradient(ellipse, rgba(255,255,255,.75), rgba(255,255,255,0) 70%); transform:rotate(-32deg); pointer-events:none; }
   .ball textarea {
-    position:absolute; left:14%; top:26%; width:72%; height:44%;
+    position:absolute; left:14%; top:21%; width:72%; height:36%;
     background:transparent; border:0; outline:0; resize:none; text-align:center; padding:0;
     color:var(--t); font-family:var(--script); font-size:22px; line-height:1.2; user-select:text; -webkit-user-select:text;
     text-shadow:0 1px 2px rgba(0,0,0,.18);
   }
+  .ball input.login { position:absolute; left:20%; top:60%; width:60%; height:9%; background:transparent; border:0; outline:0;
+    border-top:1px solid var(--t); text-align:center; padding:2px 0 0; color:var(--t); opacity:.92; font-family:var(--script); font-size:17px;
+    user-select:text; -webkit-user-select:text; }
+  .ball input.login::placeholder { color:var(--t); opacity:.6; }
   .ball textarea::placeholder { color:var(--t); opacity:.6; }
   .count { position:absolute; bottom:11%; left:0; right:0; text-align:center; font-size:12px; font-weight:700; color:var(--t); opacity:.6; }
   .sp { position:absolute; color:#fff6c9; animation:spk2 2s ease-in-out infinite alternate; pointer-events:none; text-shadow:0 0 8px rgba(255,230,150,.9); }
@@ -188,7 +192,8 @@
       <div class="capb"></div>
       <span class="sp s1">✦</span><span class="sp s2">✦</span><span class="sp s3">✦</span><span class="sp s4">✦</span>
       <div class="ball" id="ball">
-        <textarea id="txt" maxlength="140" placeholder="За что ты благодарен?"></textarea>
+        <textarea id="txt" maxlength="140" placeholder="Благодарность"></textarea>
+        <input id="login" class="login" maxlength="40" placeholder="Логин" autocomplete="off" autocapitalize="off" spellcheck="false">
         <div class="count" id="count">0/140</div>
       </div>
     </div>
@@ -230,7 +235,8 @@
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  renderer.toneMappingExposure = 1.0;
+  THREE.ShaderChunk.tonemapping_fragment += '\n gl_FragColor.rgb = mix(vec3(dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722))), gl_FragColor.rgb, 1.32);\n';
   var scene = new THREE.Scene();
   var camera = new THREE.PerspectiveCamera(32, 1, 0.1, 50);
   var TARGET_Y = 0.92;
@@ -251,7 +257,7 @@
     panel(3, 3, 6, -1, -4, 0xff6a5a, 2); panel(3, 3, -6, 0, -3, 0x6affb0, 2);
     scene.environment = pm.fromScene(es, 0.04).texture; pm.dispose();
   })();
-  scene.add(new THREE.HemisphereLight(0xece6b4, 0x16403c, 0.6));
+  scene.add(new THREE.HemisphereLight(0xece6b4, 0x16403c, 0.45));
   var key = new THREE.DirectionalLight(0xa8ecd0, 0.85); key.position.set(-2.8, 3.2, 3.6); scene.add(key);   // мятный слева
   var moonL = new THREE.DirectionalLight(0xffd886, 1.9); moonL.position.set(3.2, 3.6, -2.4); scene.add(moonL);   // золотой контровой от месяца
   var moonF = new THREE.DirectionalLight(0xffc766, 0.95); moonF.position.set(3.5, 2.6, 2.6); scene.add(moonF);      // золото справа спереди
@@ -260,7 +266,7 @@
   var pivot = new THREE.Group(); scene.add(pivot);
   var rotY = 0, rotX = 0, vel = 0, AUTO = 0.32, dragging = false;
   var balls = [], ballMeshes = [], twinkle = null, parts = [];
-  var OFF = '#c9d0d9';
+  var OFF = '#b3bcc8';
 
   // сугроб: мягкая тень + снежный диск с плавным краем (вращательно симметричен)
   (function () {
@@ -309,13 +315,32 @@
     deerEl.style.top = (top.y + (0.5 - 0.31) * H * sc + 0.5 * H * (1 - sc) - 0.0) + 'px';   // центр оленя на середине высоты ёлки
     deerEl.style.visibility = 'visible';
   }
+  var FIT_PTS = (function () { var p = [[0, 2.7, 0]]; for (var i = 0; i < 24; i++) { var a = i / 24 * 6.2832; p.push([Math.cos(a) * 1.32, 0.05, Math.sin(a) * 1.32]); } return p; })();
   function fit() {
-    var w = cvs.clientWidth, h = cvs.clientHeight; if (!w || !h) return;
-    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
-    var t = Math.tan(camera.fov * Math.PI / 360);
-    var d = Math.max(1.5 * 1.12 / t, 1.42 * 1.12 / (t * camera.aspect));
-    camera.position.set(0, TARGET_Y + d * 0.15, d); camera.lookAt(0, TARGET_Y, 0); placeDeer();
+    var W = cvs.clientWidth, H = cvs.clientHeight; if (!W || !H) return;
+    var sr = document.querySelector('.stage').getBoundingClientRect(), w = sr.width, h = sr.height; if (!w || !h) return;
+    renderer.setSize(W, H, false); camera.aspect = w / h; camera.clearViewOffset(); camera.updateProjectionMatrix();
+    var v = new THREE.Vector3();
+    function ext(d, ty) {   // границы проекции ёлки + снежного круга в NDC
+      camera.position.set(0, ty + d * 0.15, d); camera.lookAt(0, ty, 0); camera.updateMatrixWorld(true);
+      var x0 = 9, x1 = -9, y0 = 9, y1 = -9;
+      for (var i = 0; i < FIT_PTS.length; i++) { v.set(FIT_PTS[i][0], FIT_PTS[i][1], FIT_PTS[i][2]).project(camera);
+        x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y); }
+      return { x0: x0, x1: x1, y0: y0, y1: y1 };
+    }
+    var best = null;
+    for (var d = 3; d < 16; d += 0.1) {
+      var lo = -2, hi = 6;                                // ty: верхушка ёлки у верхнего края
+      for (var k = 0; k < 14; k++) { var m = (lo + hi) / 2; if (ext(d, m).y1 > 0.965) lo = m; else hi = m; }
+      var e = ext(d, (lo + hi) / 2);
+      if (e.y0 >= -0.955 && e.x0 >= -0.97 && e.x1 <= 0.97) { best = { d: d, ty: (lo + hi) / 2 }; break; }
+    }
+    if (!best) best = { d: 9, ty: 0.92 };
+    camera.position.set(0, best.ty + best.d * 0.15, best.d); camera.lookAt(0, best.ty, 0);
+    camera.setViewOffset(w, h, -sr.left, -sr.top, W, H);   // ёлка вписана в .stage, а рисуем на весь экран
+    placeDeer();
   }
+
   window.addEventListener('resize', fit);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
   if (tg && tg.onEvent) { try { tg.onEvent('viewportChanged', fit); tg.onEvent('safeAreaChanged', fit); tg.onEvent('contentSafeAreaChanged', fit); } catch (e) {} }
@@ -393,6 +418,35 @@
     });
   }
 
+  // ---- 3D-конфетти вокруг ёлки ----
+  var confetti = null, CONF_N = 230, confData = [];
+  (function () {
+    var geo = new THREE.PlaneGeometry(0.075, 0.038);
+    var mat = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, metalness: 0.25, roughness: 0.45, envMapIntensity: 1.1 });
+    confetti = new THREE.InstancedMesh(geo, mat, CONF_N); confetti.frustumCulled = false;
+    var cols = ['#e63946', '#f4a261', '#ffd166', '#2ec4b6', '#4cc9f0', '#4361ee', '#9b5de5', '#f15bb5', '#ffffff'], c = new THREE.Color();
+    var sd = 777; function r() { sd = (sd * 16807) % 2147483647; return (sd - 1) / 2147483646; }
+    for (var i = 0; i < CONF_N; i++) {
+      c.set(cols[i % cols.length]).convertSRGBToLinear(); confetti.setColorAt(i, c);
+      confData.push({ ang: r() * 6.2832, rad: 1.1 + r() * 1.35, w: (r() < 0.5 ? -1 : 1) * (0.06 + r() * 0.14), off: r(), sp: 0.075 + r() * 0.07,
+        sw: 0.05 + r() * 0.1, ph: r() * 6.2832, rx: 1.5 + r() * 3, ry: 1 + r() * 3, rz: 0.5 + r() * 2, s: 0.8 + r() * 0.9 });
+    }
+    scene.add(confetti);
+  })();
+  var _cm = new THREE.Matrix4(), _cq = new THREE.Quaternion(), _ce = new THREE.Euler(), _cp = new THREE.Vector3(), _cs = new THREE.Vector3();
+  function tickConfetti(t) {
+    if (!confetti) return;
+    for (var i = 0; i < CONF_N; i++) {
+      var o = confData[i], f = (o.off + t * o.sp) % 1, y = 7.2 - f * 7.15;
+      var a = o.ang + t * o.w, rr = o.rad + Math.sin(t * 0.7 + o.ph) * o.sw * 2;
+      _cp.set(Math.cos(a) * rr, y, Math.sin(a) * rr);
+      var k = Math.min(1, (1 - f) * 14) * o.s;
+      _ce.set(t * o.rx + o.ph, t * o.ry, t * o.rz); _cq.setFromEuler(_ce); _cs.set(k, k, k);
+      _cm.compose(_cp, _cq, _cs); confetti.setMatrixAt(i, _cm);
+    }
+    confetti.instanceMatrix.needsUpdate = true;
+  }
+
   var bin = atob(window.GLB64), buf = new Uint8Array(bin.length);
   for (var q = 0; q < bin.length; q++) buf[q] = bin.charCodeAt(q);
   new THREE.GLTFLoader().parse(buf.buffer, '', function (gltf) {
@@ -401,6 +455,20 @@
       if (!o.isMesh) return;
       if (/^Baubles/.test(o.name)) { remove.push(o); splitBalls(o).forEach(function (s) { balls.push(s); }); }
       if (o.material && /Mini lights/.test(o.material.name)) twinkle = o.material;
+      if (o.material && /christmas-tree_body/.test(o.material.name)) {
+        o.material.envMapIntensity = 0.75;
+        o.material.onBeforeCompile = function (sh) {
+          sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n' +
+            'vec3 c0 = diffuseColor.rgb;\n' +
+            'float gm = smoothstep(1.3, 1.9, c0.g / (c0.r + 1e-4)) * smoothstep(0.0, 0.05, c0.g - c0.b);\n' +
+            'float l0 = dot(c0, vec3(0.2126, 0.7152, 0.0722));\n' +
+            'vec3 dk = vec3(0.008, 0.062, 0.020), md = vec3(0.014, 0.18, 0.030), lt = vec3(0.24, 0.52, 0.02);\n' +
+            'vec3 gc = mix(dk, md, smoothstep(0.18, 0.30, l0));\n' +
+            'float up = smoothstep(0.15, 0.85, normalize(vNormal).y);\n' +
+            'gc = mix(gc, lt, clamp(smoothstep(0.30, 0.45, l0) * 0.55 + up * 0.38, 0.0, 1.0));\n' +
+            'diffuseColor.rgb = mix(c0, gc, gm);');
+        };
+      }
     });
     remove.forEach(function (o) { o.parent.remove(o); });
     balls.sort(function (a, b) { return b.center.y - a.center.y; });
@@ -446,9 +514,9 @@
   // ---- data / appearance ----
   var data = {};
   function paint(id) {
-    var b = balls[id], d = data[id], col = new THREE.Color(d ? d.color : OFF).convertSRGBToLinear();
+    var b = balls[id], d = data[id], col = new THREE.Color(d ? d.color : OFF); if (d) { var hs = {}; col.getHSL(hs); col.setHSL(hs.h, Math.min(1, hs.s * 1.2 + 0.08), Math.max(0, hs.l - 0.05)); } col.convertSRGBToLinear();
     b.mat.color.copy(col);
-    b.mat.emissive.copy(d ? col : new THREE.Color(0)); b.mat.emissiveIntensity = d ? 0.38 : 0;
+    b.mat.emissive.copy(d ? col : new THREE.Color(0)); b.mat.emissiveIntensity = d ? 0.26 : 0;
     b.mat.metalness = d ? 0.35 : 0.55; b.mat.roughness = d ? 0.15 : 0.25;
     b.on = !!d;
     if (b.gift) { b.mat.metalness = 0.12; b.mat.roughness = d ? 0.3 : 0.5; }
@@ -457,7 +525,7 @@
   }
   function stat() {
     var n = Object.keys(data).length;
-    document.getElementById('stat').textContent = 'Повешено ' + n + ' из ' + balls.length;
+    document.getElementById('stat').textContent = 'Благодарностей ' + n + ' из ' + balls.length;
     document.getElementById('bar').style.width = (n / (balls.length || 1) * 100).toFixed(1) + '%';
   }
   function paintAll() { balls.forEach(function (b) { paint(b.id); }); stat(); }
@@ -500,7 +568,7 @@
   var palette = ['#e63946','#f4a261','#ffd166','#2ec4b6','#4cc9f0','#4361ee','#9b5de5','#f15bb5','#f1f1f1'];
   var modal = document.getElementById('modal'), ball = document.getElementById('ball'), txt = document.getElementById('txt'),
       count = document.getElementById('count'), whenEl = document.getElementById('when'), saveBtn = document.getElementById('save'),
-      delBtn = document.getElementById('del'), sws = document.getElementById('swatches');
+      delBtn = document.getElementById('del'), loginEl = document.getElementById('login'), sws = document.getElementById('swatches');
   var cur = null, color = palette[0];
   function textColorFor(hex) {
     var h = hex.replace('#', ''); if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
@@ -522,9 +590,10 @@
   })();
   function refreshForm() { count.textContent = txt.value.length + '/140'; saveBtn.disabled = txt.value.trim().length === 0; }
   txt.addEventListener('input', refreshForm);
+  loginEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') loginEl.blur(); });
   function openBall(id) {
     cur = id; haptic(); var d = data[id];
-    txt.value = d ? d.text : '';
+    txt.value = d ? d.text : ''; loginEl.value = d && d.login ? d.login : '';
     setColor(d ? d.color : palette[Math.floor(Math.random() * (palette.length - 1))]);
     delBtn.hidden = !d; saveBtn.textContent = d ? 'Сохранить' : (balls[id].gift ? 'Положить под ёлку' : 'Повесить на ёлку');
     whenEl.textContent = d && d.ts ? 'Повешено ' + new Date(d.ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : '';
@@ -538,7 +607,7 @@
   saveBtn.addEventListener('click', function () {
     var t = txt.value.trim(); if (!t || cur === null) return;
     var id = cur, old = data[id];
-    data[id] = { text: t, color: color, ts: old && old.ts ? old.ts : Date.now() };
+    data[id] = { text: t, login: loginEl.value.trim(), color: color, ts: old && old.ts ? old.ts : Date.now() };
     persist(id); paint(id); stat(); haptic('ok'); closeModal();
     balls[id].pop = 0; burst(id, color);
   });
@@ -557,6 +626,7 @@
       rotX += (0 - rotX) * Math.min(1, dt * 0.8);
     }
     pivot.rotation.y = rotY; pivot.rotation.x = rotX;
+    tickConfetti(reduce ? 0 : t);
     if (twinkle) twinkle.emissiveIntensity = 1.3 + 0.5 * Math.sin(t * 2.4);
     warm.intensity = 0.85 + 0.15 * Math.sin(t * 1.7);
     balls.forEach(function (b) {
@@ -679,4 +749,3 @@
 </script>
 </body>
 </html>
-
